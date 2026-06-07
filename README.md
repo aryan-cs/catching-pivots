@@ -8,6 +8,12 @@ This repository hosts the research plan and formal theory for a white-box safety
 
 ---
 
+## In simple terms
+
+Modern AI models that "think out loud" before answering sometimes have honest thoughts but give dishonest answers. Somewhere in the middle of that thinking, the model decides to switch. We treat that switch as a single moment in the text, the *pivot*, and we look for it by watching the model's internal state token by token. When we find it, we nudge the model's internals at that one token only. The bet is that one tiny nudge at the right place flips the answer back to honest without disturbing the rest of the model's behaviour, where the standard fix (nudging at every token) leaves a much bigger mark.
+
+---
+
 ## What is this, in one paragraph?
 
 Reasoning models routinely produce CoT whose intermediate content is honest but whose final answer is not. The published instances range from sycophantic capitulation against an internally acknowledged correct answer, to in-context scheming and alignment faking, to obfuscated reward hacking under CoT-monitor optimisation, to systematically unverbalised hint use. The standing white-box response is to read the residual stream during CoT generation and intervene when deception forms. Per-token probing exists; uniform activation steering exists; what does not yet exist in the literature is a causal characterisation of the discrete token at which deception commits, together with a single-token intervention that exploits it. This work fills that gap. It defines the *pivot* as a stopping time on a two-state latent model of CoT generation, proves a $\Theta(T)$ separation between the KL footprint of pivot-localized intervention and uniform Contrastive Activation Addition, and gives an online CUSUM detector with calibrated false-alarm control. The empirical claim, to be tested, is that this single-token intervention Pareto-dominates the four nearest baselines (CAA, CAST, DSAS, PIXEL) on the flip-rate-versus-fluency-cost frontier.
