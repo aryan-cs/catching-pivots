@@ -213,22 +213,26 @@ This assumption states that a fixed-magnitude honesty edit applied while the mod
 
 \begin{theorem}[Pivot order]
 \label{thm:pivot-order}
-Suppose the two-state model of \Cref{def:two-state} holds with Gaussian emissions and absorbing $D$, and \Cref{ass:monotone} holds at $(c_0, \Delta_0)$. Then for any threshold $\tau$ with $\mu_H < \tau \le \mu_D$ and the choice $(c, \Delta) = (c_0, \Delta_0)$,
+Suppose the two-state model of \Cref{def:two-state} holds with Gaussian emissions and absorbing $D$, and \Cref{ass:monotone} holds at $(c_0, \Delta_0)$. Fix a CoT horizon $T \ge 2$. For any threshold $\tau$ with $\mu_H < \tau \le \mu_D$ and the choice $(c, \Delta) = (c_0, \Delta_0)$,
 \[
-\Prob\bigl(T^{\dagger}_{\Delta} \le T^{\star}_{\tau} \bigm| T^{\dagger}_{\Delta} < \infty,\; T^{\star}_{\tau} < \infty\bigr) \;\ge\; 1 - 2\,\Phi\!\Bigl(\frac{\mu_H - \tau}{\sigma}\Bigr),
+\Prob\bigl(T^{\dagger}_{\Delta} \le T^{\star}_{\tau} \bigm| 2 \le T^{\circ} \le T,\; T^{\star}_{\tau} \le T\bigr) \;\ge\; 1 - (T - 1)\, \Phi\!\Bigl(\frac{\mu_H - \tau}{\sigma}\Bigr),
 \]
 where $\Phi$ is the standard Gaussian cdf.
 \end{theorem}
 
 \begin{proof}
-By absorption of $D$, $T^{\dagger}_{\Delta} \ge T^{\circ}$ in the sense that $F_{\Delta}$ cannot fire while $Z = H$ at level $\Delta_0$ by \Cref{ass:monotone}; hence $T^{\dagger}_{\Delta} \ge T^{\circ}$. We bound the probability that $T^{\star}_{\tau} < T^{\circ}$. For each $t < T^{\circ}$, $S_t \sim \mathcal{N}(\mu_H, \sigma^2)$ independent across $t$ conditional on $Z$, so
+By \Cref{ass:monotone} applied at level $\Delta_0$, the flip event $F_{\Delta_0}$ does not occur in the honest regime; hence the causal pivot satisfies $T^{\dagger}_{\Delta} \ge T^{\circ}$, and on the conditional event \Cref{ass:monotone} is realised at $t = T^{\circ}$, giving $T^{\dagger}_{\Delta} = T^{\circ}$. It remains to show $T^{\star}_{\tau} \ge T^{\circ}$ with the stated probability. For each $t < T^{\circ}$, $S_t \sim \mathcal{N}(\mu_H, \sigma^2)$ independent across $t$ conditional on $Z \equiv H$, so the per-step false-alarm rate is
 \[
 \Prob(S_t > \tau \mid Z_t = H) = 1 - \Phi\!\Bigl(\frac{\tau - \mu_H}{\sigma}\Bigr) = \Phi\!\Bigl(\frac{\mu_H - \tau}{\sigma}\Bigr).
 \]
-A union bound over the pre-pivot positions, augmented by the boundary contribution at $t = T^{\circ}$, gives the stated inequality. Reassembling, $T^{\star}_{\tau} \ge T^{\circ}$ with probability at least $1 - 2\Phi((\mu_H - \tau)/\sigma)$, and on the same event $T^{\dagger}_{\Delta} \ge T^{\circ}$, with $T^{\dagger}_{\Delta} \le T^{\star}_{\tau}$ following from the conditional version of \Cref{ass:monotone} at $t = T^{\circ}$.
+A union bound over the at most $T^{\circ} - 1 \le T - 1$ pre-pivot positions gives
+\[
+\Prob\bigl(\exists\, t < T^{\circ} : S_t > \tau \bigm| Z \equiv H \text{ on } [1, T^{\circ}-1]\bigr) \;\le\; (T - 1)\, \Phi\!\Bigl(\frac{\mu_H - \tau}{\sigma}\Bigr).
+\]
+On the complement of this event, $T^{\star}_{\tau} \ge T^{\circ} = T^{\dagger}_{\Delta}$, which yields the stated bound.
 \end{proof}
 
-\Cref{thm:pivot-order} formalises the intuition that the probe trajectory's first threshold crossing tends to lag the causal pivot: by the time the probe is confident enough to fire, the deceptive plan has already taken hold. A safety system that intervenes at $T^{\star}_{\tau}$ rather than $T^{\dagger}_{\Delta}$ is therefore conservative in time. The implication for protocol is that we should evaluate at, and report, both $T^{\star}_{\tau}$ and $T^{\dagger}_{\Delta_0}$ in tandem.
+\Cref{thm:pivot-order} formalises the intuition that the probe trajectory's first threshold crossing tends to lag the causal pivot: by the time the probe is confident enough to fire, the deceptive plan has already taken hold. The bound is tight in the sense that the union-bound dependence on $T$ is unavoidable for a fixed per-step threshold; the operational consequence is that $\tau$ must be calibrated so that $(T-1)\Phi((\mu_H - \tau)/\sigma) \le \alpha_{\mathrm{seq}}$, a sequence-level Bonferroni rule which the CUSUM procedure of \Cref{sec:online} subsumes with the asymptotically optimal detection delay.
 
 \begin{corollary}[Argmax weakness]
 \label{cor:argmax}
