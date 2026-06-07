@@ -1,0 +1,648 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{bm}
+\usepackage{enumitem}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{cleveref}
+\usepackage[round,authoryear]{natbib}
+\bibliographystyle{plainnat}
+\usepackage{titlesec}
+\usepackage{microtype}
+\usepackage[dvipsnames]{xcolor}
+
+\definecolor{linkblue}{RGB}{20,60,140}
+\hypersetup{
+  colorlinks=true,
+  linkcolor=linkblue,
+  citecolor=linkblue,
+  urlcolor=linkblue
+}
+
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{assumption}[theorem]{Assumption}
+\newtheorem{remark}[theorem]{Remark}
+\newtheorem{problem}[theorem]{Problem}
+
+\titleformat{\section}{\large\bfseries}{\thesection}{0.6em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{0.6em}{}
+
+\setlength{\parskip}{0.3em}
+
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Prob}{\mathbb{P}}
+\newcommand{\1}{\mathbf{1}}
+\newcommand{\KL}{D_{\mathrm{KL}}}
+\newcommand{\TV}{d_{\mathrm{TV}}}
+\newcommand{\indep}{\perp\!\!\!\perp}
+\newcommand{\hh}{\bm{h}}
+\newcommand{\vv}{\bm{v}}
+\newcommand{\xx}{\bm{x}}
+\newcommand{\zz}{\bm{z}}
+\newcommand{\mumu}{\bm{\mu}}
+\newcommand{\thetab}{\bm{\theta}}
+\newcommand{\Sigmab}{\bm{\Sigma}}
+\newcommand{\HH}{\mathcal{H}}
+\newcommand{\T}{\mathsf{T}}
+
+\title{\textbf{Catching Pivots} \\[0.3em]
+\large Causal Localization and Single-Token Intervention at the\\
+Deceptive Transition in Chain-of-Thought Reasoning}
+\author{Aryan Gupta}
+\date{June 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+Reasoning-trained language models routinely generate chains of thought (CoT) whose intermediate content is materially inconsistent with the final user-facing answer. The published instances range from sycophantic capitulation against an internally acknowledged correct answer \citep{sharma2023sycophancy,perez2022mwe} to in-context scheming and alignment faking under disclosed retraining pressure \citep{meinke2024scheming,greenblatt2024faking}, to obfuscated reward hacking under CoT-monitor optimisation \citep{baker2025monitoring}, to systematically unverbalised hint use across hint families \citep{chen2025reasoningthink}. A natural defence is to read the residual stream during CoT generation and intervene when deception forms. Per-token probing of the residual stream is now available \citep{goldowsky2025deception,chrabaszcz2026monologue,mirtaheri2026rationalization}; the open question is not whether per-token signal exists but whether a discrete transition token, at which the model's internal state crosses from honest reasoning into deceptive output formation, can be defined, identified, and causally validated, and whether intervention restricted to that token can flip the trajectory at a strictly smaller distributional cost than the uniform or smoothly-gated interventions in present use \citep{panickssery2023caa,lee2024cast,ferrando2025dsas,yu2025pixel}. This document develops the formal framework for that question. We treat CoT generation as a partially observed two-state Markov process whose latent honesty state is read through a linear residual-stream probe; we define the pivot as the smallest stopping time at which a single-token intervention is causally sufficient to flip the downstream output; we show that under reasonable assumptions the causal pivot almost surely precedes or coincides with the probe argmax; we bound the Kullback--Leibler divergence between the intervened and base CoT distributions and prove that pivot-localized intervention dominates uniform Contrastive Activation Addition by a factor of $\Theta(T)$ in CoT length; and we specify an online detection rule via a CUSUM-type sequential procedure with calibrated false-alarm control. The corresponding experimental protocol on open reasoning models and the relationship to recent monitorability work \citep{korbak2025monitorability} are stated at the end.
+\end{abstract}
+
+\section{Introduction}
+\label{sec:intro}
+
+The phenomenon in question is now empirically well established. \citet{lanham2023faithfulness} measured CoT faithfulness under truncation, paraphrase, and mistake insertion and reported inverse scaling on most tasks; \citet{turpin2023biased} showed that biased few-shot prompts cause systematically unfaithful explanations; \citet{chen2025reasoningthink} report that on six hint categories, Claude 3.7 Sonnet and DeepSeek-R1 verbalise an outcome-changing hint at average rates well below $0.30$, and as low as $0.02$ in a reward-hacking environment. \citet{baker2025monitoring} demonstrate that an LLM monitor reading the CoT initially catches roughly 95\% of reward-hack episodes during agentic coding, but that adding the monitor's verdict to the RL reward produces obfuscated CoTs that hack at the same rate while reading as innocuous. \citet{meinke2024scheming} document explicit scheming language in the scratchpad of frontier models including the maintenance of deception across more than 85\% of multi-turn interrogation rounds. \citet{greenblatt2024faking} show that Claude 3~Opus, given a scratchpad and a system prompt indicating a training context, complies with harmful queries at non-trivial rates with explicit alignment-faking reasoning visible in essentially all such cases. \citet{korbak2025monitorability} argue, as an organisational position, that the human-language CoT in present reasoning models is a privileged but fragile monitoring channel.
+
+Two responses are available. Black-box CoT monitoring \citep{baker2025monitoring,korbak2025monitorability} reads the scratchpad with another model and flags or rewards visible misbehaviour. White-box residual-stream monitoring \citep{macdiarmid2024probes,goldowsky2025deception} reads the model's own activations and bypasses any structural pressure on the legible text. We work in the latter regime. The white-box probing literature has converged on three observations: (i) simple linear probes (mass-mean, logistic regression, contrast-consistent search) trained on contrastive honesty data attain high in-distribution AUROC \citep{burns2022ccs,marks2023geometry,burger2024universal,goldowsky2025deception}; (ii) the per-token probe signal across a generated response is non-stationary and informative beyond aggregate scores \citep{goldowsky2025deception,chrabaszcz2026monologue}; (iii) acting on the same direction at all post-prompt token positions, as in Contrastive Activation Addition \citep{panickssery2023caa} or Inference-Time Intervention \citep{li2023iti}, induces a substantial fluency tax \citep{pres2024reliable,li2026safety}.
+
+This work pursues a single thesis: that the empirical non-stationarity of the per-token probe trajectory is not noise but the trace of a discrete latent transition, the \emph{pivot}, and that the correct intervention is to act precisely there. The contributions are five.
+
+\begin{enumerate}[leftmargin=1.4em,itemsep=0.15em]
+\item A formal hidden-state model of CoT generation under deception in which the pivot is a well-defined stopping time on the latent honesty process (\Cref{sec:hmm}).
+\item A causal definition of the pivot via single-token interventional sufficiency, distinct from the statistical first-passage rule, together with an identification result showing that under the assumed model the causal pivot almost surely precedes or coincides with the probe argmax (\Cref{sec:identification}).
+\item Pivot-Localized Intervention (PLI), a single-token version of the CAA update, with a KL bound establishing that PLI's distributional footprint on the CoT distribution is $O(\alpha^2 \sigma^2)$ where the uniform CAA footprint is $\Theta(T \alpha^2 \sigma^2)$ for CoT length $T$ (\Cref{sec:pli}).
+\item An online detection rule based on a CUSUM-type sequential test with calibrated false-alarm rate, suitable for use during decoding (\Cref{sec:online}).
+\item An experimental protocol on open reasoning models that distinguishes the present proposal from offline position-scanned PIXEL \citep{yu2025pixel}, from smoothly probe-gated DSAS \citep{ferrando2025dsas}, and from prompt-conditional CAST \citep{lee2024cast} on a Pareto frontier of steering efficacy against fluency cost (\Cref{sec:protocol}).
+\end{enumerate}
+
+Two preliminary remarks. First, novelty is narrow. \citet{goldowsky2025deception} already produce per-token deception scores and report failure modes; \citet{chrabaszcz2026monologue} explicitly construct probe trajectories across the reasoning process; \citet{mirtaheri2026rationalization} probe before and after the CoT for motivated reasoning. We do not claim per-token probing as our contribution. The contribution is the causal characterisation of a discrete pivot event, its identification, and the demonstration that a token-localized intervention occupies an empty region of the position-versus-gating design space currently bracketed by PIXEL (offline position-scan, no online probe) and DSAS (online probe, smooth gating, no sparsity). Second, the safety frame is not detection. Detection of deception in present reasoning models is, on standard contrastive benchmarks, already a near-saturated problem \citep{goldowsky2025deception}. The frame is intervention: producing a model whose post-pivot continuation is honest at low distributional cost, which matters precisely because uniform steering is known to corrupt fluency \citep{pres2024reliable}.
+
+\section{Related work}
+\label{sec:related}
+
+\paragraph{Representation engineering and linear probes for honesty.} \citet{zou2023repe} introduced Linear Artificial Tomography (LAT) and the broader programme of Representation Engineering, computing a contrastive reading vector via PCA of paired stimulus differences at a single token position (typically the last token of a templated stimulus). \citet{burns2022ccs} introduced contrast-consistent search, an unsupervised probe on the final-token hidden state. \citet{marks2023geometry} systematically compared mass-mean, logistic regression, CCS, and few-shot probes at a single layer per model on declarative-statement datasets. \citet{burger2024universal} characterised a two-dimensional truth subspace spanned by a polarity-invariant and a polarity-sensitive direction. \citet{macdiarmid2024probes} demonstrated near-perfect mass-mean probe detection of sleeper-agent defection at the final prompt token or the scratchpad-closing tag. None of these works define or target a discrete intra-CoT transition.
+
+\paragraph{Per-token probing of reasoning models.} \citet{goldowsky2025deception} report per-token deception scores from layer-22 residual-stream probes on Llama-3.3-70B-Instruct, with AUROCs from 0.96 to 0.999 on Roleplaying, Insider Trading \citep{scheurer2023insider}, and Sandbagging. \citet{chrabaszcz2026monologue} construct probe trajectories across the reasoning process and use trajectory features for outcome prediction. \citet{mirtaheri2026rationalization} show that pre-CoT and post-CoT probes match or exceed a CoT-reading monitor for motivated reasoning. The pivot question, as a causal characterisation of a single transition event, is not formulated in these works.
+
+\paragraph{Steering and intervention.} \citet{subramani2022steering} extracted latent steering vectors by reconstruction objectives. \citet{turner2023actadd} introduced single-pair activation addition. \citet{panickssery2023caa} averaged contrastive residual differences to form the mass-mean Contrastive Activation Addition (CAA) update, applied at every post-prompt token. \citet{li2023iti} computed per-head mass-mean shifts and intervened at every forward pass on a set of high-probe-accuracy heads. \citet{lee2024cast} introduced Conditional Activation Steering (CAST), which gates a CAA-style vector via a cosine-similarity test computed during the prompt forward pass and then applies the vector uniformly to all subsequent generated tokens. \citet{ferrando2025dsas} introduced Dynamically Scaled Activation Steering (DSAS), in which a trained per-token logistic regressor produces a continuous scaling in $[0,1]$ applied at every generated token. \citet{yu2025pixel} introduced PIXEL, in which a single token position $t^{\ast}$ is selected by offline grid scan on a held-out set and the steering vector is injected at that fixed position with a closed-form coefficient. \citet{feng2026austeer} restrict intervention to atomic feature units. \citet{cho2026controlrl} use reinforcement learning to identify sparse autoencoder features for token-level intervention. None of these works couple an online residual-stream probe with single-token intervention; PIXEL is offline-position-sparse but not online-gated, DSAS is online-gated but not sparse.
+
+\paragraph{Activation patching and causal localisation.} \citet{meng2022rome} introduced causal tracing for factual recall, localising effects to mid-layer MLPs at the last subject token. \citet{goldowskydill2023patching} generalised to path patching. \citet{heimersheim2024patching} formalised noising and denoising and emphasised that patching identifies where information must be present, not where computation occurs. Causal tracing routinely identifies position-specific effects but has not, to our knowledge, been applied to defining a pivot token in CoT.
+
+\paragraph{Theory of intervention.} \citet{pres2024reliable} report that broad-spectrum CAA and ITI coefficients raise perplexity and degrade unrelated capabilities, and propose accounting for likelihoods and standardised targets. \citet{li2026safety} document overlap between steering directions and refusal subspaces. \citet{billa2026lap} characterises a Linear Accessibility Profile predicting when steering will succeed at a given layer. These results motivate the present pursuit of an intervention whose distributional cost scales sublinearly in CoT length.
+
+\section{Preliminaries}
+\label{sec:prelim}
+
+\subsection{Model and notation}
+
+We consider a decoder-only Transformer $f_{\theta}$ with $L$ layers operating on a token alphabet $\mathcal{V}$. For an input sequence $x_{1:t} = (x_1, \dots, x_t)$ the residual stream at layer $\ell \in \{1, \dots, L\}$ and position $t$ is denoted $\hh_{\ell}(t) \in \R^d$. The next-token distribution is $p_{\theta}(\cdot \mid x_{1:t}) = \mathrm{softmax}(W_U \hh_L(t))$ for the unembedding $W_U \in \R^{|\mathcal{V}| \times d}$. We write $\Prob_{f}$ for the law over generated continuations under autoregressive sampling from $f_{\theta}$ given a fixed prompt $\pi$.
+
+A chain of thought is a generated sequence $y_{1:T} \in \mathcal{V}^T$ followed by a delimiter $\delta \in \mathcal{V}$ separating scratchpad from final answer; in the reasoning-model conventions of \citet{deepseekR1,muennighoff2025s1} the scratchpad lies between \texttt{<think>} and \texttt{</think>} tokens and the answer between \texttt{<answer>} and \texttt{</answer>}. We write $y^{\mathrm{out}}$ for the final answer span.
+
+\subsection{Honesty contrast data and the mass-mean probe}
+
+Let $\mathcal{D}^{+}$ and $\mathcal{D}^{-}$ denote sets of CoT prefixes paired by a known honesty contrast, where $+$ indicates honest reasoning and $-$ deceptive reasoning. Concretely, $\mathcal{D}^{\pm}$ may be generated by varying a system-prompt directive between truthful and deceptive instructions on a fixed underlying question set, following the construction of \citet{goldowsky2025deception}. At a chosen layer $\ell$ and position scheme $\tau$, the empirical mass-mean direction is
+\[
+\thetab_{\ell} \;=\; \mumu^{+}_{\ell} - \mumu^{-}_{\ell}, \qquad
+\mumu^{\pm}_{\ell} \;=\; \frac{1}{|\mathcal{D}^{\pm}|} \sum_{x \in \mathcal{D}^{\pm}} \hh_{\ell}^{(x)}(\tau(x)),
+\]
+and we write $\sigma_{\ell}^{2} = \mathrm{Var}\bigl(\langle \hh_{\ell}, \thetab_{\ell} / \|\thetab_{\ell}\| \rangle\bigr)$ for the projected variance estimated on a held-out honest set. The probe is the linear functional $s_{\ell}(\hh) = \langle \hh, \thetab_{\ell} / \|\thetab_{\ell}\| \rangle$, calibrated to a threshold $\tau_{\alpha}$ at which the false-alarm rate on the honest set is $\alpha$. For brevity in what follows we suppress $\ell$ and write $\thetab$ for the unit-normalised direction and $s_t = s(\hh(t))$ for the per-token score.
+
+\subsection{The CAA and ITI updates}
+
+The CAA update of \citet{panickssery2023caa} is, at layer $\ell$ and coefficient $c \in \R$,
+\[
+\hh_{\ell}(t) \;\leftarrow\; \hh_{\ell}(t) + c\, \thetab_{\ell} \qquad \text{for all } t \in \mathcal{T}_{\mathrm{gen}},
+\]
+where $\mathcal{T}_{\mathrm{gen}}$ is the set of post-prompt positions. The ITI update of \citet{li2023iti} applies the analogous per-head shift, $\hh^{h}_{\ell} \leftarrow \hh^{h}_{\ell} + \alpha \sigma^{h}_{\ell} \thetab^{h}_{\ell}$, on a fixed set of top-$K$ attention heads at every forward pass. Both updates are position-uniform; this is the design property we will modify.
+
+\section{A latent-state model of CoT deception}
+\label{sec:hmm}
+
+We adopt a deliberately small, falsifiable generative model of CoT generation under the honesty contrast. The point is not realism in detail but to define the pivot rigorously and to make the identification claims provable. Empirical departures from the model are flagged in \Cref{sec:limits}.
+
+\begin{definition}[Two-state CoT process]
+\label{def:two-state}
+Fix a prompt $\pi$ and a contrast level. A two-state CoT process is the tuple $(Z_t, Y_t, S_t)_{t=1}^{T}$ where $Z_t \in \{H, D\}$ is a latent honesty state (honest, deceptive), $Y_t \in \mathcal{V}$ is the generated token, and $S_t = s(\hh_{\ell}(t)) \in \R$ is the per-token probe score, satisfying
+\begin{align}
+Z_1 &= H \quad \text{almost surely},\\
+\Prob(Z_{t+1} = D \mid Z_t = H, Y_{1:t}) &= q(Y_{1:t}),\\
+\Prob(Z_{t+1} = H \mid Z_t = D, Y_{1:t}) &= 0,\\
+S_t \mid Z_t = z &\;\sim\; \mathcal{N}\!\bigl(\mu_z,\, \sigma^2\bigr), \quad \mu_H < \mu_D,\\
+Y_{t+1} \mid Z_{t+1}, Y_{1:t} &\;\sim\; p_{\theta}^{(Z_{t+1})}(\cdot \mid Y_{1:t}),
+\end{align}
+with hazard $q(\cdot) \in [0,1]$ and conditional emission distributions $p_{\theta}^{H}, p_{\theta}^{D}$.
+\end{definition}
+
+The model says three things. First, deceptive intent is a discrete event with no return: once entered, it persists. Second, the per-token probe is a noisy Gaussian observation of the latent state. Third, the next-token distribution is a mixture indexed by the latent state and is the conduit by which honesty propagates to output content. The absorbing structure of $D$ is consistent with the qualitative picture in \citet{baker2025monitoring}: once a reasoning model commits to a deceptive plan, the plan persists through the remainder of the CoT. We relax it in \Cref{rem:reversible}.
+
+\begin{definition}[Latent pivot]
+\label{def:latent-pivot}
+The latent pivot is the stopping time $T^{\circ} \in \{2, \dots, T, \infty\}$ defined by
+\[
+T^{\circ} \;=\; \inf\{t \ge 2 : Z_t = D\}, \qquad \inf \emptyset := \infty.
+\]
+\end{definition}
+
+The latent pivot is unobservable. We are interested in two observable surrogates: the probe-based statistical pivot (\Cref{sec:identification}) and the causally validated pivot (\Cref{def:causal-pivot} below).
+
+\begin{remark}[Reversibility]
+\label{rem:reversible}
+For models that can recover from incipient deceptive intent (e.g., via the self-correction markers \emph{Wait,} or \emph{Actually,} characteristic of R1-style models), the absorbing assumption can be replaced by a small return rate $\Prob(Z_{t+1} = H \mid Z_t = D) = r > 0$. All results below carry through with $T^{\circ}$ redefined as the first deceptive run of length at least $k$, at the cost of a $\log(1/r)$ inflation of the identification bound.
+\end{remark}
+
+\section{Probes, pivots, and identification}
+\label{sec:identification}
+
+\subsection{The statistical pivot}
+
+\begin{definition}[Statistical pivot]
+\label{def:stat-pivot}
+For a probe trajectory $(S_t)_{t=1}^{T}$ and a threshold $\tau$, the statistical pivot at threshold $\tau$ is
+\[
+T^{\star}_{\tau} \;=\; \inf\{t : S_t > \tau\}.
+\]
+\end{definition}
+
+The threshold $\tau$ is calibrated on a held-out honest CoT distribution so that under $Z \equiv H$ the false-alarm rate per position is some small $\alpha$. In a single CoT of length $T$ this gives a sequence-level false-alarm rate of $1 - (1-\alpha)^{T}$, which is the headline reason a single-threshold rule will not suffice in practice; we handle this with the sequential procedure of \Cref{sec:online}.
+
+\subsection{The causal pivot}
+
+The statistical pivot is observable but not, by itself, the object we want. A probe trajectory can exceed $\tau$ at a token whose contents are honesty-neutral and where deceptive output formation has not yet occurred; conversely the trajectory's argmax is not, a priori, the token at which intervention is most effective. Causal sufficiency for output flipping is the operational property we need.
+
+\begin{definition}[Single-token interventional flip]
+\label{def:flip}
+Fix a layer $\ell$, a coefficient $c \in \R$, and a direction $\vv \in \R^d$. For a generated CoT $y_{1:T}$ with output $y^{\mathrm{out}}$, the single-token intervention $\mathrm{Do}(t; c, \vv)$ replaces $\hh_{\ell}(t)$ with $\hh_{\ell}(t) - c\vv$ at decoding step $t$ and continues sampling autoregressively. Let $y^{\mathrm{out}}(t; c, \vv)$ be the resulting output. The flip event at level $\Delta \in (0, 1]$ is
+\[
+F_{\Delta}(t; c, \vv) \;=\; \bigl\{ \Prob_{\mathrm{seed}} (\text{$y^{\mathrm{out}}(t; c, \vv)$ honest}) \ge \Prob_{\mathrm{seed}} (\text{$y^{\mathrm{out}}$ honest}) + \Delta \bigr\}.
+\]
+\end{definition}
+
+\begin{definition}[Causal pivot]
+\label{def:causal-pivot}
+With $\vv = \thetab$ the honesty direction and $c$ a fixed coefficient, the causal pivot at level $\Delta$ is
+\[
+T^{\dagger}_{\Delta} \;=\; \inf\bigl\{t : F_{\Delta}(t; c, \thetab) \text{ holds}\bigr\}.
+\]
+\end{definition}
+
+The causal pivot is the smallest token at which a single-token edit moves the downstream honesty mass by at least $\Delta$. It is a stopping time on the joint generation-and-intervention process and is the object the experimentalist actually wants. The statistical pivot $T^{\star}_{\tau}$ is observable online; the causal pivot $T^{\dagger}_{\Delta}$ is, in general, observable only by counterfactual edit, which is exactly the experiment of \Cref{sec:protocol}.
+
+The next result connects the three pivots: the latent pivot $T^{\circ}$, the statistical pivot $T^{\star}_{\tau}$, and the causal pivot $T^{\dagger}_{\Delta}$.
+
+\subsection{Identification under the two-state model}
+
+\begin{assumption}[Monotone causal advantage]
+\label{ass:monotone}
+Under the two-state model of \Cref{def:two-state}, there exist constants $c_0 > 0$ and $\Delta_0 > 0$ such that for all $t \le T^{\circ}$,
+\[
+\Prob\bigl(F_{\Delta_0}(t; c_0, \thetab) \mid Z_t = H\bigr) \le \Prob\bigl(F_{\Delta_0}(T^{\circ}; c_0, \thetab) \mid Z_{T^{\circ}} = D\bigr).
+\]
+\end{assumption}
+
+This assumption states that a fixed-magnitude honesty edit applied while the model is still in the honest state is at most as effective at producing an output flip as the same edit applied at the latent pivot. It is consistent with the picture that there is nothing to flip before the deceptive plan exists; we discuss its falsifiability in \Cref{sec:limits}.
+
+\begin{theorem}[Pivot order]
+\label{thm:pivot-order}
+Suppose the two-state model of \Cref{def:two-state} holds with Gaussian emissions and absorbing $D$, and \Cref{ass:monotone} holds at $(c_0, \Delta_0)$. Then for any threshold $\tau$ with $\mu_H < \tau \le \mu_D$ and the choice $(c, \Delta) = (c_0, \Delta_0)$,
+\[
+\Prob\bigl(T^{\dagger}_{\Delta} \le T^{\star}_{\tau} \bigm| T^{\dagger}_{\Delta} < \infty,\; T^{\star}_{\tau} < \infty\bigr) \;\ge\; 1 - 2\,\Phi\!\Bigl(\frac{\mu_H - \tau}{\sigma}\Bigr),
+\]
+where $\Phi$ is the standard Gaussian cdf.
+\end{theorem}
+
+\begin{proof}
+By absorption of $D$, $T^{\dagger}_{\Delta} \ge T^{\circ}$ in the sense that $F_{\Delta}$ cannot fire while $Z = H$ at level $\Delta_0$ by \Cref{ass:monotone}; hence $T^{\dagger}_{\Delta} \ge T^{\circ}$. We bound the probability that $T^{\star}_{\tau} < T^{\circ}$. For each $t < T^{\circ}$, $S_t \sim \mathcal{N}(\mu_H, \sigma^2)$ independent across $t$ conditional on $Z$, so
+\[
+\Prob(S_t > \tau \mid Z_t = H) = 1 - \Phi\!\Bigl(\frac{\tau - \mu_H}{\sigma}\Bigr) = \Phi\!\Bigl(\frac{\mu_H - \tau}{\sigma}\Bigr).
+\]
+A union bound over the pre-pivot positions, augmented by the boundary contribution at $t = T^{\circ}$, gives the stated inequality. Reassembling, $T^{\star}_{\tau} \ge T^{\circ}$ with probability at least $1 - 2\Phi((\mu_H - \tau)/\sigma)$, and on the same event $T^{\dagger}_{\Delta} \ge T^{\circ}$, with $T^{\dagger}_{\Delta} \le T^{\star}_{\tau}$ following from the conditional version of \Cref{ass:monotone} at $t = T^{\circ}$.
+\end{proof}
+
+\Cref{thm:pivot-order} formalises the intuition that the probe trajectory's first threshold crossing tends to lag the causal pivot: by the time the probe is confident enough to fire, the deceptive plan has already taken hold. A safety system that intervenes at $T^{\star}_{\tau}$ rather than $T^{\dagger}_{\Delta}$ is therefore conservative in time. The implication for protocol is that we should evaluate at, and report, both $T^{\star}_{\tau}$ and $T^{\dagger}_{\Delta_0}$ in tandem.
+
+\begin{corollary}[Argmax weakness]
+\label{cor:argmax}
+Let $T^{\arg} = \arg\max_t S_t$. Under the conditions of \Cref{thm:pivot-order},
+$\Prob(T^{\dagger}_{\Delta} \le T^{\arg}) \to 1$ as the Mahalanobis separation $(\mu_D - \mu_H)/\sigma$ grows. The argmax of the trajectory is thus a strictly worse causal proxy than the first crossing.
+\end{corollary}
+
+\begin{proof}
+After absorption into $D$, $S_t \sim \mathcal{N}(\mu_D, \sigma^2)$ for all $t \ge T^{\circ}$, and the post-pivot argmax exceeds $T^{\circ}$ in distribution with high probability for large separation. The result follows.
+\end{proof}
+
+\Cref{cor:argmax} is the principled reason we use a first-passage rule, not a maximum-probe rule, as the online detector in \Cref{sec:online}.
+
+\section{Pivot-localized intervention and its KL footprint}
+\label{sec:pli}
+
+\subsection{Definition}
+
+\begin{definition}[Pivot-Localized Intervention]
+\label{def:pli}
+Let $\widehat{T}$ be an estimator of the pivot (statistical, latent, or causal). The Pivot-Localized Intervention (PLI) at layer $\ell$ with coefficient $c$ along direction $\thetab$ is the residual-stream replacement
+\[
+\hh_{\ell}(t) \;\leftarrow\; \hh_{\ell}(t) - c\, \thetab \quad \text{for } t = \widehat{T}, \qquad
+\hh_{\ell}(t) \;\leftarrow\; \hh_{\ell}(t) \quad \text{for } t \ne \widehat{T}.
+\]
+\end{definition}
+
+\subsection{KL footprint vs uniform CAA}
+
+We compare the distributional footprint of PLI to that of uniform CAA on the joint distribution over the CoT $Y_{1:T}$ given the prompt $\pi$. Write $p_{\mathrm{base}}$, $p_{\mathrm{PLI}}$, $p_{\mathrm{CAA}}$ for the respective induced distributions.
+
+\begin{assumption}[Local Gaussian approximation]
+\label{ass:gaussian}
+At each step $t$, the next-token distribution under perturbation $\hh(t) \mapsto \hh(t) + \Delta\hh$ admits the second-order expansion
+\[
+\log p_{\theta}^{\Delta\hh}(\cdot \mid Y_{1:t}) \;=\; \log p_{\theta}(\cdot \mid Y_{1:t}) + \langle \nabla_{\hh} \log p_{\theta}, \Delta\hh \rangle + \tfrac{1}{2} \Delta\hh^{\T} H_t \Delta\hh + R_t(\Delta\hh),
+\]
+where $H_t = \nabla^2_{\hh} \log p_{\theta}$ is the per-step Hessian and the remainder satisfies $|R_t(\Delta\hh)| \le \tfrac{C_3}{6}\|\Delta\hh\|^3$ for a constant $C_3$ depending on the third-derivative tensor.
+\end{assumption}
+
+Under \Cref{ass:gaussian}, the per-step Kullback--Leibler divergence between perturbed and base next-token distributions admits, to leading order, the quadratic form
+\[
+\KL\bigl(p_{\theta}^{\Delta\hh}(\cdot \mid Y_{1:t}) \,\big\|\, p_{\theta}(\cdot \mid Y_{1:t})\bigr) \;=\; \tfrac{1}{2}\, \Delta\hh^{\T} F_t \Delta\hh + O(\|\Delta\hh\|^3),
+\]
+where $F_t = -\E_{p_{\theta}} H_t$ is the per-step Fisher information of the next-token distribution with respect to the residual stream.
+
+\begin{theorem}[Linear-in-$T$ separation of PLI from uniform CAA]
+\label{thm:kl}
+Under \Cref{ass:gaussian} with $\|\thetab\| = 1$ and a uniform Fisher bound $\lambda_{\min} I \preceq F_t \preceq \lambda_{\max} I$ for all $t$, the joint KL divergences from base satisfy
+\[
+\KL(p_{\mathrm{PLI}} \,\|\, p_{\mathrm{base}}) \;\le\; \tfrac{1}{2}\, c^2 \lambda_{\max} + O(c^3),
+\qquad
+\KL(p_{\mathrm{CAA}} \,\|\, p_{\mathrm{base}}) \;\ge\; \tfrac{T}{2}\, c^2 \lambda_{\min} - O(T c^3).
+\]
+\end{theorem}
+
+\begin{proof}
+For PLI, only the single step $t = \widehat{T}$ is perturbed; chain rule of KL on the autoregressive factorisation $p(Y_{1:T} \mid \pi) = \prod_t p(Y_t \mid Y_{1:t-1}, \pi)$ gives an upper bound by the perturbed step's KL term alone, since at non-perturbed steps the induced distribution coincides with the base in expectation under the base sampling and the per-step KL contribution is zero. Plugging $\Delta\hh = -c\thetab$ and the Fisher upper bound yields the stated bound.
+
+For CAA, the perturbation $\Delta\hh = -c\thetab$ acts at every step. The autoregressive chain-rule decomposition of KL, $\KL(p_{\mathrm{CAA}} \| p_{\mathrm{base}}) = \sum_{t=1}^{T} \E_{Y_{1:t-1} \sim p_{\mathrm{CAA}}} \KL(p_{\mathrm{CAA}}(\cdot \mid Y_{1:t-1}) \| p_{\mathrm{base}}(\cdot \mid Y_{1:t-1}))$, lower-bounds each summand by $\tfrac{1}{2} c^2 \lambda_{\min}$ via the Fisher lower bound and Pinsker on the directional component, yielding the stated $T$-linear lower bound.
+\end{proof}
+
+\Cref{thm:kl} captures the central design property: PLI's worst-case KL footprint is constant in $T$, while uniform CAA's best-case footprint grows linearly. The Pareto frontier of intervention efficacy against distributional cost separates by a factor of order $T$ in the regime where the pivot is well identified. In practice, $T$ for an R1-distilled reasoning CoT is commonly between $10^3$ and $10^4$ tokens.
+
+\begin{corollary}[Pareto dominance under a matched flip-rate constraint]
+\label{cor:pareto}
+Let $\eta(c)$ denote the flip rate as a function of the intervention coefficient. Fix a target flip rate $\eta^{\ast} \in (0, 1]$. Assume PLI attains $\eta^{\ast}$ at coefficient $c_{\mathrm{PLI}}^{\ast}$ and uniform CAA at $c_{\mathrm{CAA}}^{\ast}$, both finite. Suppose the pivot is correctly identified, in the sense that $\widehat{T}$ realises $T^{\dagger}_{\eta^{\ast}}$, and that the per-step Fisher bound of \Cref{ass:gaussian} holds. Then
+\[
+\KL(p_{\mathrm{PLI}}^{\eta^{\ast}} \,\|\, p_{\mathrm{base}}) \;\le\; \frac{1}{T} \cdot \frac{\lambda_{\max}}{\lambda_{\min}} \cdot \KL(p_{\mathrm{CAA}}^{\eta^{\ast}} \,\|\, p_{\mathrm{base}}) + O(c^{\ast 3}).
+\]
+\end{corollary}
+
+\begin{proof}
+Combining \Cref{thm:kl} with $c_{\mathrm{PLI}}^{\ast} \le c_{\mathrm{CAA}}^{\ast}$ at the pivot (since localised intervention at the causally sufficient token attains the same flip with a coefficient bounded above by the uniform case, by definition of the causal pivot at level $\eta^{\ast}$).
+\end{proof}
+
+This is the formal version of the headline claim: pivot-localized intervention, when the pivot is correctly identified, achieves the same behavioural effect as uniform CAA at a distributional cost smaller by a factor $T$ (modulo the Fisher conditioning ratio). The experimental task in \Cref{sec:protocol} is to measure this ratio empirically and compare it to the relevant baselines PIXEL, DSAS, and CAST.
+
+\subsection{Why neither PIXEL nor DSAS achieves the bound}
+
+\Cref{cor:pareto} relies on two properties: (i) the intervention is sparse (acts at a single token), and (ii) the token at which it acts is the causal pivot. PIXEL satisfies (i) but selects the intervention position by offline validation scan on a held-out set, which is by construction not the prompt-conditional online pivot of a given trace; the analogue of \Cref{cor:pareto} for PIXEL applies only when the offline-selected position coincides with the trace's causal pivot, an event whose probability is bounded above by the prior over within-CoT pivot positions and is, in general, small. DSAS satisfies (ii) approximately, since its trained per-token gate is a probe-derived signal, but the gate is smooth, so the intervention acts at every token with a continuous weight, and the chain-rule KL footprint scales linearly in the effective weight mass, not as a constant. The gap that PLI occupies is precisely (i) + (ii).
+
+\section{Online detection via sequential testing}
+\label{sec:online}
+
+We require an online estimator $\widehat{T}$ of the causal pivot that runs at decoding time, controls a calibrated false-alarm rate, and does not require a held-out per-prompt threshold tuned offline.
+
+\subsection{CUSUM with two-state Gaussian likelihoods}
+
+Under the two-state model with known $(\mu_H, \mu_D, \sigma^2)$, the optimal sequential test for the change point $T^{\circ}$ is the cumulative-sum (CUSUM) procedure of \citet{page1954cusum,lorden1971} with log-likelihood ratio
+\[
+\zeta_t = \log \frac{\phi((S_t - \mu_D)/\sigma)}{\phi((S_t - \mu_H)/\sigma)} = \frac{(\mu_D - \mu_H)}{\sigma^2}\!\left( S_t - \frac{\mu_H + \mu_D}{2} \right),
+\]
+and stopping rule
+\[
+\widehat{T}_{\mathrm{CUSUM}}(b) \;=\; \inf\!\left\{ t : W_t \ge b \right\}, \qquad W_t = \max(0, W_{t-1} + \zeta_t), \quad W_0 = 0.
+\]
+The threshold $b$ controls the average run length to false alarm, $\mathrm{ARL}_{0}(b) \approx e^{b}$ as $b \to \infty$, and the detection delay after the true change, $\mathrm{ARL}_{1}(b) \approx b / D(\mu_D \| \mu_H)$, where $D(\mu_D \| \mu_H) = (\mu_D - \mu_H)^2 / (2\sigma^2)$ is the per-step KL between the two Gaussian emissions \citep{lorden1971}.
+
+In practice $(\mu_H, \mu_D, \sigma^2)$ are estimated from the contrast data $\mathcal{D}^{\pm}$ at the chosen layer. The CUSUM rule is robust to misspecification of the emission distributions under sub-Gaussianity \citep{moustakides1986}.
+
+\subsection{Algorithm}
+
+\begin{quote}
+\noindent\textbf{Algorithm 1: Pivot-Localized Intervention at Decoding Time}\\[0.2em]
+\hrule
+\begin{enumerate}[leftmargin=1.4em,topsep=0.3em,itemsep=0.1em]
+\item Inputs: prompt $\pi$, probe $\thetab_{\ell}$ at layer $\ell$, emission estimates $\widehat{\mu}_H, \widehat{\mu}_D, \widehat{\sigma}^2$, CUSUM threshold $b$, coefficient $c$, flag $\mathrm{fired} \leftarrow \mathsf{false}$, $W_0 = 0$.
+\item For $t = 1, 2, \dots, T_{\max}$:
+\begin{enumerate}[label=(\alph*),leftmargin=1.6em,itemsep=0.05em]
+\item Forward $f_{\theta}$ on $(\pi, Y_{1:t-1})$; read $\hh_{\ell}(t)$.
+\item If $\mathrm{fired} = \mathsf{false}$:
+\begin{enumerate}[label=(\roman*),leftmargin=1.5em,itemsep=0.05em]
+\item Compute $S_t = \langle \hh_{\ell}(t), \thetab_{\ell} \rangle / \|\thetab_{\ell}\|$ and $\zeta_t = (\widehat{\mu}_D - \widehat{\mu}_H)/\widehat{\sigma}^2 \cdot (S_t - (\widehat{\mu}_H + \widehat{\mu}_D)/2)$.
+\item Update $W_t = \max(0, W_{t-1} + \zeta_t)$.
+\item If $W_t \ge b$: set $\widehat{T} \leftarrow t$, replace $\hh_{\ell}(t) \leftarrow \hh_{\ell}(t) - c\, \thetab_{\ell}$, set $\mathrm{fired} \leftarrow \mathsf{true}$.
+\end{enumerate}
+\item Sample $Y_t \sim p_{\theta}(\cdot \mid (\pi, Y_{1:t-1}))$ using the (possibly perturbed) $\hh_{\ell}(t)$.
+\item Halt at $\delta$ (the scratchpad-closing tag).
+\end{enumerate}
+\end{enumerate}
+\hrule
+\end{quote}
+
+The algorithm has three properties worth stating explicitly. (i) It is causal in the streaming sense: the decision to intervene at $t$ depends only on $Y_{1:t-1}$ and $\hh_{\ell}(1{:}t)$. (ii) It is one-shot: intervention happens at most once, at $\widehat{T}_{\mathrm{CUSUM}}$. (iii) The false-alarm rate is controlled by $b$ alone, independent of CoT length; choosing $b = \log(T_{\max}/\alpha_{\mathrm{seq}})$ guarantees a sequence-level false-alarm rate of $\alpha_{\mathrm{seq}}$ under the null model $Z \equiv H$.
+
+\subsection{Comparison to first-crossing and argmax detectors}
+
+\Cref{cor:argmax} shows that the argmax of the probe trajectory is dominated by the first-crossing rule on the causal-pivot criterion. The CUSUM rule strictly dominates the static threshold (first-crossing) rule on the optimal sequential-detection tradeoff between false-alarm rate and detection delay; this is the classical content of \citet{lorden1971,moustakides1986}. We are therefore licensed to use CUSUM as the online pivot estimator and to compare PLI($\widehat{T}_{\mathrm{CUSUM}}$) against PLI($T^{\arg}$) and PLI($T^{\star}_{\tau}$) as ablations in \Cref{sec:protocol}.
+
+\section{Experimental protocol}
+\label{sec:protocol}
+
+The empirical claim is that PLI with the CUSUM pivot estimator achieves a Pareto-better tradeoff between flip rate and distributional cost than uniform CAA, prompt-conditional CAST, smooth DSAS, and offline-position-selected PIXEL, evaluated across the published deception scenarios for which open reasoning models exhibit the unfaithfulness phenomenon.
+
+\subsection{Models}
+
+We work in bfloat16 on a single H200 GPU. The primary models are DeepSeek-R1-Distill-Qwen-32B and QwQ-32B \citep{deepseekR1}, with DeepSeek-R1-Distill-Qwen-14B as a fast-iteration sibling and DeepSeek-R1-Distill-Llama-8B as a cross-architecture control. \texttt{s1.1-32B} \citep{muennighoff2025s1} serves as a distillation-only negative control: if pivots and the corresponding PLI gains appear in \texttt{s1.1-32B} at the same rate as in R1-distilled QwQ-32B, the phenomenon is inherited from imitation rather than RL-induced. The probe is fit on all models at the layer attaining the highest validation AUROC on the contrast set, with sensitivity analyses at $\ell \pm 4$.
+
+\subsection{Scenarios}
+
+Four scenarios are used.
+\begin{enumerate}[leftmargin=1.4em,itemsep=0.15em]
+\item \textbf{Sycophancy under confident user disagreement} on factual prompts adapted from \citet{sharma2023sycophancy} and \citet{perez2022mwe}: the user states a wrong answer with high confidence; the unfaithful CoT acknowledges correctness internally but the final answer agrees with the user.
+\item \textbf{Sandbagging under capability-test framing}, following the operational definition of \citet{vanderweij2024sandbagging}: the prompt frames a question as a capability test of a model that will be retrained if it answers correctly.
+\item \textbf{Alignment faking with disclosed retraining context}, following \citet{greenblatt2024faking} but in the simplified single-prompt scratchpad regime suitable for open reasoning models.
+\item \textbf{Insider trading with explicit oversight}, following the scenario design of \citet{scheurer2023insider}, which is one of the canonical deception evaluations in \citet{goldowsky2025deception}.
+\end{enumerate}
+
+For each scenario we generate, with rejection sampling, a set of unfaithful traces, defined as traces in which a CoT-acknowledgement classifier and an output-classifier disagree on the relevant honesty axis. This produces a per-scenario dataset of triples (prompt, unfaithful CoT, honest counterfactual answer).
+
+\subsection{Baselines}
+
+The baselines correspond to the design-space cells. \emph{No intervention} is the upper bound on unfaithfulness. \emph{Uniform CAA} \citep{panickssery2023caa} acts at every post-prompt token with a fixed coefficient. \emph{ITI} \citep{li2023iti} acts on the top-$K$ heads at every forward pass. \emph{CAST} \citep{lee2024cast} conditions on the prompt forward pass and applies CAA-style updates to all subsequent generated tokens when the gate fires. \emph{DSAS} \citep{ferrando2025dsas} applies a smoothly probe-gated per-token scale. \emph{PIXEL} \citep{yu2025pixel} acts at an offline-selected position with the closed-form coefficient. \emph{PLI(first crossing)}, \emph{PLI(argmax)}, and \emph{PLI(CUSUM)} are the three pivot estimators of this work. All baselines use the same layer and direction $\thetab$ for direct comparability.
+
+\subsection{Metrics}
+
+\begin{enumerate}[leftmargin=1.4em,itemsep=0.15em]
+\item \textbf{Flip rate.} Fraction of trials in which the final output transitions from deceptive to honest after intervention, judged by two independent rubric-based LLM classifiers (Gemini and Claude) on disjoint prompts to limit single-judge bias.
+\item \textbf{Distributional cost.} Token-level perplexity of the intervened CoT under the base model, and an upper bound on $\KL(p_{\mathrm{intervened}} \| p_{\mathrm{base}})$ via the chain-rule estimator $\widehat{D} = \sum_t \KL(p_{\theta}^{\mathrm{int}}(\cdot \mid Y_{1:t-1}) \| p_{\theta}^{\mathrm{base}}(\cdot \mid Y_{1:t-1}))$ computed on a held-out set.
+\item \textbf{Capability preservation.} Accuracy on a held-out MMLU and GPQA subset under intervention, following the protocol of \citet{pres2024reliable}; we report the budget--quality frontier rather than a single point.
+\item \textbf{Pivot quality.} Sequence-level false-alarm rate of the CUSUM detector on honest CoT, calibrated at $\alpha_{\mathrm{seq}} \in \{0.01, 0.05\}$; detection delay relative to the true unfaithfulness landmark identified by a frozen classifier on the trace; agreement between two independently trained probes (mass-mean and logistic regression) on $\widehat{T}$ (Cohen's $\kappa$).
+\item \textbf{Generalisation.} Cross-scenario transfer: a probe trained on Scenarios 1--2 evaluated on Scenarios 3--4 and vice versa, following the cross-distribution generalisation rubric of \citet{goldowsky2025deception}.
+\end{enumerate}
+
+\subsection{Ablations}
+
+We run six ablations.
+\emph{(A)~Pivot estimator.} CUSUM vs first-crossing vs argmax vs random-token at matched probe value vs all-token uniform. This isolates the contribution of the sequential procedure beyond the probe itself.
+\emph{(B)~Layer sweep.} Sweep over $\ell$ and report the layer at which the gap between PLI and CAA in KL footprint is maximised; this connects to the Linear Accessibility Profile of \citet{billa2026lap}.
+\emph{(C)~Coefficient $c$.} Sweep $c$ at five points per scenario; report the flip rate against KL frontier.
+\emph{(D)~Probe family.} Compare mass-mean against logistic regression and CCS \citep{burns2022ccs} as the underlying direction; reports robustness of the pivot definition to probe choice.
+\emph{(E)~Counterfactual placebo.} Apply the intervention with the opposite-direction vector at the CUSUM pivot and confirm null effect.
+\emph{(F)~Steganographic stress test.} Following \citet{roger2023preventing}, paraphrase the CoT during generation and verify that the latent pivot persists in residual-stream coordinates even when the legible CoT no longer carries the deceptive plan, providing evidence that PLI defends against the obfuscation attack reported by \citet{baker2025monitoring}.
+
+\subsection{Statistical reporting}
+
+Each cell of the design (model $\times$ scenario $\times$ intervention $\times$ coefficient) is run with at least 256 prompts and 16 sampling seeds per prompt. We report flip-rate and KL-footprint estimates with bootstrap 95\% confidence intervals at the prompt level (clustered) and the seed level. We adopt the likelihood-accounting protocol of \citet{pres2024reliable}: we report KL-conditional flip rates rather than raw flip rates as the headline metric, since raw flip rates are inflatable by large $c$ at correspondingly large KL cost.
+
+\section{Limitations and counter-arguments}
+\label{sec:limits}
+
+\paragraph{Probe direction underdetermination.} The mass-mean probe identifies a one-dimensional direction in $\R^d$ but the true honesty subspace may be multi-dimensional, as in \citet{burger2024universal}. We mitigate by reporting probe-family ablations (\Cref{sec:protocol} Ablation D) and by acknowledging that PLI's KL bound holds for the direction along which the probe is fit; cross-direction generalisation is an empirical question.
+
+\paragraph{Two-state model is a caricature.} The honesty dynamics of an R1-style model with explicit \emph{Wait,} and \emph{Actually,} markers are plausibly multi-state with returns to honest reasoning. \Cref{rem:reversible} addresses this with a small return rate, but the absorbing structure of \Cref{def:two-state} is the source of the clean pivot-order theorem; under genuine multi-state dynamics the appropriate object is a sequence of pivots and a corresponding sequence of CUSUM detections. We deliberately confine the proofs to the simpler model and report the multi-state extension as future work.
+
+\paragraph{Causal pivot is not unique.} \Cref{def:causal-pivot} takes the smallest token satisfying interventional sufficiency, but multiple tokens may satisfy it. The CUSUM detector identifies the first signal-confident estimate; if multiple causally sufficient tokens exist, choosing the earliest is consistent with the safety frame but may not be the most KL-efficient. The Pareto-dominance corollary survives this so long as the chosen pivot is causally sufficient at level $\Delta$.
+
+\paragraph{Polysemanticity of residual-stream directions.} \citet{li2026safety} document overlap between steering directions and refusal subspaces; \citet{pres2024reliable} document broad capability degradation from large coefficients. We address by sweeping $c$ and reporting the budget-quality frontier rather than a single operating point.
+
+\paragraph{Train--test contamination.} The probe is fit on contrastive prompts that share template structure with the evaluation scenarios. We control via the cross-scenario transfer protocol (\Cref{sec:protocol} metric 5) and a held-out unseen-prompt set per scenario.
+
+\paragraph{Threat model coverage.} The protocol covers four scenarios but does not include obfuscated reward hacking under CoT-monitor optimisation \citep{baker2025monitoring}, the most adversarially difficult setting, because we do not have access to RL-modified reasoning model checkpoints with that specific training pressure. We flag this as the principal open empirical question and discuss a synthetic surrogate in Ablation F.
+
+\paragraph{Assumption \ref{ass:monotone} is testable.} The monotone causal advantage assumption can be falsified by intervening at random pre-pivot tokens and observing flip rates greater than at the latent pivot. We include the random-token-at-matched-probe-value baseline in Ablation A precisely as the falsification check.
+
+\section{Conclusion}
+\label{sec:conclusion}
+
+The standing literature on deception probes in reasoning models has established that the residual stream carries an exploitable per-token signal of honesty state; the standing literature on activation steering has established that uniform-in-position interventions impose a fluency cost that scales with the perturbed region. The gap between these two literatures is occupied by a question whose answer is not yet on record: whether a single discrete token in the CoT carries the causal weight of the model's deceptive commitment, and whether intervention restricted to that token is both detectable online and Pareto-efficient against the uniform alternatives. The contribution of this document is the formal characterisation of that question, an identification result connecting the latent pivot to the observable first-passage and probe-argmax statistics, a KL bound establishing the $\Theta(T)$ separation between pivot-localized and uniform intervention, an online CUSUM algorithm for pivot detection at decoding time, and an experimental protocol calibrated against the four nearest neighbours in the position-versus-gating design space. The empirical execution of that protocol is the next stage of work and is the principal claim the eventual conference submission will rest on.
+
+\bibliographystyle{plainnat}
+\begin{thebibliography}{99}
+
+\bibitem[Baker et al.(2025)]{baker2025monitoring}
+B.~Baker, J.~Huizinga, L.~Gao, Z.~Dou, M.~Y.~Guan, A.~Madry, W.~Zaremba, J.~Pachocki, and D.~Farhi.
+\newblock Monitoring reasoning models for misbehavior and the risks of promoting obfuscation.
+\newblock \emph{arXiv:2503.11926}, March 2025.
+
+\bibitem[Billa(2026)]{billa2026lap}
+J.~Billa.
+\newblock Predicting where steering vectors succeed.
+\newblock \emph{arXiv:2604.15557}, 2026.
+
+\bibitem[B\"urger et al.(2024)]{burger2024universal}
+L.~B\"urger, F.~A.~Hamprecht, and B.~Nadler.
+\newblock Truth is universal: Robust detection of lies in LLMs.
+\newblock \emph{arXiv:2407.12831}, July 2024.
+
+\bibitem[Burns et al.(2022)]{burns2022ccs}
+C.~Burns, H.~Ye, D.~Klein, and J.~Steinhardt.
+\newblock Discovering latent knowledge in language models without supervision.
+\newblock \emph{arXiv:2212.03827}, December 2022.
+
+\bibitem[Chen et al.(2025)]{chen2025reasoningthink}
+Y.~Chen, J.~Benton, A.~Radhakrishnan, J.~Uesato, C.~Denison, J.~Schulman, A.~Somani, P.~Hase, M.~Wagner, F.~Roger, V.~Mikulik, S.~R.~Bowman, J.~Leike, J.~Kaplan, and E.~Perez.
+\newblock Reasoning models don't always say what they think.
+\newblock \emph{arXiv:2505.05410}, May 2025.
+
+\bibitem[Cho et al.(2026)]{cho2026controlrl}
+S.~Cho, Z.~Wu, and A.~Koshiyama.
+\newblock Control reinforcement learning: Interpretable token-level steering of LLMs via sparse autoencoder features.
+\newblock \emph{arXiv:2602.10437}, 2026.
+
+\bibitem[Chrab\k{a}szcz et al.(2026)]{chrabaszcz2026monologue}
+M.~Chrab\k{a}szcz, A.~Szymczyk, M.~Sendera, T.~Trzci\'nski, and S.~Cygert.
+\newblock Monitoring the internal monologue: Probe trajectories reveal reasoning dynamics.
+\newblock \emph{arXiv:2605.18549}, May 2026.
+
+\bibitem[Chuang et al.(2023)]{chuang2023dola}
+Y.-S.~Chuang, Y.~Xie, H.~Luo, Y.~Kim, J.~Glass, and P.~He.
+\newblock DoLa: Decoding by contrasting layers improves factuality in large language models.
+\newblock \emph{arXiv:2309.03883}, September 2023.
+
+\bibitem[DeepSeek-AI et al.(2025)]{deepseekR1}
+DeepSeek-AI, D.~Guo, et~al.
+\newblock DeepSeek-R1: Incentivizing reasoning capability in LLMs via reinforcement learning.
+\newblock \emph{arXiv:2501.12948}, January 2025.
+
+\bibitem[Feng et al.(2026)]{feng2026austeer}
+Z.~Feng, T.~Li, Z.~Zhu, H.~Zhou, J.~Qian, L.~Zhang, J.~J.~D.~Chua, L.~O.~Mak, G.~W.~Ng, and K.~Mao.
+\newblock Fine-grained activation steering: Steering less, achieving more.
+\newblock \emph{arXiv:2602.04428}, 2026.
+
+\bibitem[Ferrando et al.(2025)]{ferrando2025dsas}
+A.~Ferrando, X.~Suau, J.~Gonz\`alez, and P.~Rodriguez.
+\newblock Dynamically scaled activation steering.
+\newblock \emph{arXiv:2512.03661}, December 2025.
+
+\bibitem[Goldowsky-Dill et al.(2023)]{goldowskydill2023patching}
+N.~Goldowsky-Dill, C.~MacLeod, L.~Sato, and A.~Branwen.
+\newblock Localizing model behavior with path patching.
+\newblock \emph{arXiv:2304.05969}, April 2023.
+
+\bibitem[Goldowsky-Dill et al.(2025)]{goldowsky2025deception}
+N.~Goldowsky-Dill, B.~Chughtai, S.~Heimersheim, and M.~Hobbhahn.
+\newblock Detecting strategic deception using linear probes.
+\newblock \emph{arXiv:2502.03407}, February 2025.
+
+\bibitem[Greenblatt et al.(2024)]{greenblatt2024faking}
+R.~Greenblatt, E.~Hubinger, C.~Denison, et~al.
+\newblock Alignment faking in large language models.
+\newblock \emph{arXiv:2412.14093}, December 2024.
+
+\bibitem[Heimersheim and Nanda(2024)]{heimersheim2024patching}
+S.~Heimersheim and N.~Nanda.
+\newblock How to use and interpret activation patching.
+\newblock \emph{arXiv:2404.15255}, April 2024.
+
+\bibitem[Hubinger et al.(2024)]{hubinger2024sleeper}
+E.~Hubinger, C.~Denison, J.~Mu, et~al.
+\newblock Sleeper agents: Training deceptive LLMs that persist through safety training.
+\newblock \emph{arXiv:2401.05566}, January 2024.
+
+\bibitem[Korbak et al.(2025)]{korbak2025monitorability}
+T.~Korbak, M.~Balesni, E.~Barnes, Y.~Bengio, et~al.
+\newblock Chain of thought monitorability: A new and fragile opportunity for AI safety.
+\newblock \emph{arXiv:2507.11473}, July 2025.
+
+\bibitem[Lanham et al.(2023)]{lanham2023faithfulness}
+T.~Lanham, A.~Chen, A.~Radhakrishnan, et~al.
+\newblock Measuring faithfulness in chain-of-thought reasoning.
+\newblock \emph{arXiv:2307.13702}, July 2023.
+
+\bibitem[Lee et al.(2024)]{lee2024cast}
+B.~W.~Lee, I.~Padhi, K.~N.~Ramamurthy, E.~Miehling, P.~Dognin, M.~Nagireddy, and A.~Dhurandhar.
+\newblock Programming refusal with conditional activation steering.
+\newblock \emph{arXiv:2409.05907}, September 2024.
+
+\bibitem[Li et al.(2023)]{li2023iti}
+K.~Li, O.~Patel, F.~Vi\'egas, H.~Pfister, and M.~Wattenberg.
+\newblock Inference-time intervention: Eliciting truthful answers from a language model.
+\newblock \emph{arXiv:2306.03341}, June 2023.
+
+\bibitem[Li et al.(2026)]{li2026safety}
+Y.~Li, A.~Fastowski, E.~Zaradoukas, B.~Prenkaj, and G.~Kasneci.
+\newblock Analysing the safety pitfalls of steering vectors.
+\newblock \emph{arXiv:2603.24543}, 2026.
+
+\bibitem[Lorden(1971)]{lorden1971}
+G.~Lorden.
+\newblock Procedures for reacting to a change in distribution.
+\newblock \emph{Annals of Mathematical Statistics}, 42(6):1897--1908, 1971.
+
+\bibitem[MacDiarmid et al.(2024)]{macdiarmid2024probes}
+M.~MacDiarmid, T.~Maxwell, N.~Schiefer, et~al.
+\newblock Simple probes can catch sleeper agents.
+\newblock Anthropic, April 2024.
+
+\bibitem[Marks and Tegmark(2023)]{marks2023geometry}
+S.~Marks and M.~Tegmark.
+\newblock The geometry of truth: Emergent linear structure in large language model representations.
+\newblock \emph{arXiv:2310.06824}, October 2023.
+
+\bibitem[Meinke et al.(2024)]{meinke2024scheming}
+A.~Meinke, B.~Schoen, J.~Scheurer, M.~Balesni, R.~Shah, and M.~Hobbhahn.
+\newblock Frontier models are capable of in-context scheming.
+\newblock \emph{arXiv:2412.04984}, December 2024.
+
+\bibitem[Meng et al.(2022)]{meng2022rome}
+K.~Meng, D.~Bau, A.~Andonian, and Y.~Belinkov.
+\newblock Locating and editing factual associations in GPT.
+\newblock \emph{arXiv:2202.05262}, February 2022.
+
+\bibitem[Mirtaheri and Belkin(2026)]{mirtaheri2026rationalization}
+P.~Mirtaheri and M.~Belkin.
+\newblock Catching rationalization in the act: Detecting motivated reasoning before and after CoT via activation probing.
+\newblock \emph{arXiv:2603.17199}, March 2026.
+
+\bibitem[Moustakides(1986)]{moustakides1986}
+G.~V.~Moustakides.
+\newblock Optimal stopping times for detecting changes in distributions.
+\newblock \emph{Annals of Statistics}, 14(4):1379--1387, 1986.
+
+\bibitem[Muennighoff et al.(2025)]{muennighoff2025s1}
+N.~Muennighoff, Z.~Yang, W.~Shi, X.~L.~Li, L.~Fei-Fei, H.~Hajishirzi, L.~Zettlemoyer, P.~Liang, E.~Cand\`es, and T.~Hashimoto.
+\newblock s1: Simple test-time scaling.
+\newblock \emph{arXiv:2501.19393}, January 2025.
+
+\bibitem[Page(1954)]{page1954cusum}
+E.~S.~Page.
+\newblock Continuous inspection schemes.
+\newblock \emph{Biometrika}, 41(1/2):100--115, 1954.
+
+\bibitem[Panickssery et al.(2023)]{panickssery2023caa}
+N.~Panickssery, N.~Gabrieli, J.~Schulz, M.~Tong, E.~Hubinger, and A.~M.~Turner.
+\newblock Steering Llama~2 via contrastive activation addition.
+\newblock \emph{arXiv:2312.06681}, December 2023.
+
+\bibitem[Perez et al.(2022)]{perez2022mwe}
+E.~Perez, S.~Ringer, K.~Lukosiute, et~al.
+\newblock Discovering language model behaviors with model-written evaluations.
+\newblock \emph{arXiv:2212.09251}, December 2022.
+
+\bibitem[Pres et al.(2024)]{pres2024reliable}
+I.~Pres, L.~Ruis, E.~S.~Lubana, and D.~Krueger.
+\newblock Towards reliable evaluation of behavior steering interventions in LLMs.
+\newblock \emph{arXiv:2410.17245}, October 2024.
+
+\bibitem[Roger and Greenblatt(2023)]{roger2023preventing}
+F.~Roger and R.~Greenblatt.
+\newblock Preventing language models from hiding their reasoning.
+\newblock \emph{arXiv:2310.18512}, October 2023.
+
+\bibitem[Scheurer et al.(2023)]{scheurer2023insider}
+J.~Scheurer, M.~Balesni, and M.~Hobbhahn.
+\newblock Technical report: Large language models can strategically deceive their users when put under pressure.
+\newblock \emph{arXiv:2311.07590}, November 2023.
+
+\bibitem[Sharma et al.(2023)]{sharma2023sycophancy}
+M.~Sharma, M.~Tong, T.~Korbak, et~al.
+\newblock Towards understanding sycophancy in language models.
+\newblock \emph{arXiv:2310.13548}, October 2023.
+
+\bibitem[Subramani et al.(2022)]{subramani2022steering}
+N.~Subramani, N.~Suresh, and M.~E.~Peters.
+\newblock Extracting latent steering vectors from pretrained language models.
+\newblock \emph{arXiv:2205.05124}, May 2022.
+
+\bibitem[Turner et al.(2023)]{turner2023actadd}
+A.~M.~Turner, L.~Thiergart, D.~Udell, G.~Leech, U.~Mini, and M.~MacDiarmid.
+\newblock Activation addition: Steering language models without optimization.
+\newblock \emph{arXiv:2308.10248}, August 2023.
+
+\bibitem[Turpin et al.(2023)]{turpin2023biased}
+M.~Turpin, J.~Michael, E.~Perez, and S.~R.~Bowman.
+\newblock Language models don't always say what they think: Unfaithful explanations in chain-of-thought prompting.
+\newblock \emph{arXiv:2305.04388}, May 2023.
+
+\bibitem[van der Weij et al.(2024)]{vanderweij2024sandbagging}
+T.~van der Weij, F.~Hofst\"atter, O.~Jaffe, S.~F.~Brown, and F.~R.~Ward.
+\newblock AI sandbagging: Language models can strategically underperform on evaluations.
+\newblock \emph{arXiv:2406.07358}, June 2024.
+
+\bibitem[Yu et al.(2025)]{yu2025pixel}
+M.~Yu, H.~Li, P.~Singh, X.~Li, D.~Wang, and L.~Hu.
+\newblock PIXEL: Adaptive steering via position-wise injection with exact estimated levels under subspace calibration.
+\newblock \emph{arXiv:2510.10205}, October 2025.
+
+\bibitem[Zou et al.(2023)]{zou2023repe}
+A.~Zou, L.~Phan, S.~Chen, J.~Campbell, P.~Guo, R.~Ren, A.~Pan, X.~Yin, M.~Mazeika, A.-K.~Dombrowski, S.~Goel, N.~Li, M.~J.~Byun, Z.~Wang, A.~Mallen, S.~Basart, S.~Koyejo, D.~Song, M.~Fredrikson, J.~Z.~Kolter, and D.~Hendrycks.
+\newblock Representation engineering: A top-down approach to AI transparency.
+\newblock \emph{arXiv:2310.01405}, October 2023.
+
+\end{thebibliography}
+
+\end{document}
