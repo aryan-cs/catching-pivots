@@ -193,6 +193,7 @@ A formal preprint will follow the empirical results. For now, please cite the re
   title  = {Catching Pivots: Causal Localization and Single-Token Intervention
             at the Deceptive Transition in Chain-of-Thought Reasoning},
   author = {Aryan Gupta},
+  email  = {aryan.cs.app@gmail.com},
   year   = {2026},
   note   = {\url{https://github.com/aryan-cs/catching-pivots}}
 }

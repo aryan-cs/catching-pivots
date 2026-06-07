@@ -275,4 +275,4 @@ The closest neighbours by problem statement are Goldowsky-Dill et al. ([2502.034
 
 ## 17. Authorship and acknowledgments
 
-Lead: Aryan Gupta. Compute on a personally accessible H200 (`ssh uiuc-h200`). Advisors and collaborators to be added during the empirical phase. Acknowledgments will recognise Apollo Research, Anthropic Alignment Science, and OpenAI's monitorability work for setting the empirical baselines this project compares against, without implying endorsement.
+Lead: Aryan Gupta (`aryan.cs.app@gmail.com`). Compute on a personally accessible H200. Advisors and collaborators to be added during the empirical phase. Acknowledgments will recognise Apollo Research, Anthropic Alignment Science, and OpenAI's monitorability work for setting the empirical baselines this project compares against, without implying endorsement.
