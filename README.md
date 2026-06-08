@@ -207,4 +207,16 @@ A formal preprint will follow the empirical results. For now, please cite the re
 
 ## License
 
-To be determined. Until a license file is added, treat the contents as "all rights reserved" with permission granted only for reading and academic discussion. A permissive open-source license (MIT or Apache-2.0) will be added before any code is published.
+Copyright © 2026 Aryan Gupta. All rights reserved.
+
+This work — the research plan (`PLAN.md`), the formal theory document (`docs/proof.tex` and the compiled `docs/proof.pdf`), and all accompanying text in this repository — is licensed under the [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License](https://creativecommons.org/licenses/by-nc-sa/4.0/) (CC BY-NC-SA 4.0). The full legal code is in [`LICENSE`](LICENSE).
+
+In plain English, this means you may read, share, and adapt the work for non-commercial purposes, provided that you:
+
+1. **Give appropriate attribution** to the author (Aryan Gupta), link back to this repository, and indicate whether changes were made.
+2. **Do not use the work commercially** without explicit prior permission.
+3. **Distribute any derivative works under the same license** (CC BY-NC-SA 4.0).
+
+Using ideas, figures, theorems, or text from this work without citation is plagiarism and is not permitted under any reading of this licence. Commercial use, including training proprietary models on this corpus or incorporating it into a paid product, requires a separate written agreement with the author.
+
+When code is added to the repository, it will carry its own software license (likely Apache-2.0 with a patent grant) covered by a separate `LICENSE-CODE` file; the CC licence here governs the prose and theory.

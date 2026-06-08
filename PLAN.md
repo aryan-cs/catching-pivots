@@ -230,7 +230,7 @@ This puts the streaming detector and the single-token edit on the same side of t
 
 ## 14. Reproducibility commitments
 
-* Code released under MIT or Apache-2.0 license; license decided at submission.
+* This research plan, the formal theory document, and all repository prose are licensed under [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/); code, when added, will carry its own permissive software license.
 * All scenario prompts and probe contrast pairs released as a dataset.
 * Per-cell seed and prompt manifests released as JSON-Lines artefacts.
 * Pre-registered analysis plan for the headline Pareto comparison, deposited at the project repository commit hash at submission.
