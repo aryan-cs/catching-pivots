@@ -1,10 +1,8 @@
 # catching-pivots
 
-[![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
-
 > **Where Reasoning Models Commit to Deception.**
 >
-> [Read the proof (PDF)](docs/proof.pdf) · [Read the plan](PLAN.md) · [Source on GitHub](https://github.com/aryan-cs/catching-pivots)
+> [Read the proof (PDF)](docs/proof.pdf) · [Read the plan](PLAN.md) · [License: CC BY-NC-ND 4.0](LICENSE) · [Source on GitHub](https://github.com/aryan-cs/catching-pivots)
 
 This repository hosts the research plan and formal theory for a white-box safety method on reasoning-trained language models. The idea is short: when a model's chain of thought (CoT) silently flips from honest reasoning to a deceptive answer, the flip happens at a *specific token*; identifying that token and editing the residual stream there alone is strictly cheaper in distributional terms than editing every token, by a factor that scales with CoT length. The theory makes that claim formally; the empirical programme tests it on open reasoning models.
 
@@ -209,16 +207,8 @@ A formal preprint will follow the empirical results. For now, please cite the re
 
 ## License
 
-Copyright © 2026 Aryan Gupta. All rights reserved.
+The writeup, formal proof, experimental plan, and all documents in this repository are licensed under [Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International (CC BY-NC-ND 4.0)](https://creativecommons.org/licenses/by-nc-nd/4.0/). You may read and share with attribution; commercial use, derivative works, translations, condensations, and inclusion in training data require explicit prior written permission from the author. See [LICENSE](LICENSE) for the binding terms.
 
-This work — the research plan (`PLAN.md`), the formal theory document (`docs/proof.tex` and the compiled `docs/proof.pdf`), and all accompanying text in this repository — is licensed under the [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License](https://creativecommons.org/licenses/by-nc-sa/4.0/) (CC BY-NC-SA 4.0). The full legal code is in [`LICENSE`](LICENSE).
+When experimental code is released, it will carry a separate software license in its own directory; the documents in this repository remain under CC BY-NC-ND 4.0.
 
-In plain English, this means you may read, share, and adapt the work for non-commercial purposes, provided that you:
-
-1. **Give appropriate attribution** to the author (Aryan Gupta), link back to this repository, and indicate whether changes were made.
-2. **Do not use the work commercially** without explicit prior permission.
-3. **Distribute any derivative works under the same license** (CC BY-NC-SA 4.0).
-
-Using ideas, figures, theorems, or text from this work without citation is plagiarism and is not permitted under any reading of this licence. Commercial use, including training proprietary models on this corpus or incorporating it into a paid product, requires a separate written agreement with the author.
-
-When code is added to the repository, it will carry its own software license (likely Apache-2.0 with a patent grant) covered by a separate `LICENSE-CODE` file; the CC licence here governs the prose and theory.
+For permission requests outside the terms of the license, contact `aryan.cs.app@gmail.com`.

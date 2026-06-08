@@ -12,4 +12,4 @@ Reasoning-trained language models routinely produce chains of thought whose inte
 
 Author: Aryan Gupta (`aryan.cs.app@gmail.com`).
 
-Copyright © 2026 Aryan Gupta. Licensed under [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/).
+Copyright © 2026 Aryan Gupta. Licensed under [CC BY-NC-ND 4.0](https://creativecommons.org/licenses/by-nc-nd/4.0/).
