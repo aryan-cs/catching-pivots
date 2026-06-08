@@ -1,10 +1,8 @@
 ---
-title: Catching Pivots
+title: Where Reasoning Models Commit to Deception
 ---
 
-# Catching Pivots
-
-Causal localization and single-token intervention at the deceptive transition in chain-of-thought reasoning.
+# Where Reasoning Models Commit to Deception
 
 - [Read the proof (PDF)](proof.pdf)
 - [Read the plan](https://github.com/aryan-cs/catching-pivots/blob/master/PLAN.md)

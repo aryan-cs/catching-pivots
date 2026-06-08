@@ -1,6 +1,6 @@
 # PLAN.md
 
-**Catching Pivots: Causal Localization and Single-Token Intervention at the Deceptive Transition in Chain-of-Thought Reasoning**
+**Where Reasoning Models Commit to Deception**
 
 A conference-level research plan. Companion to [`docs/proof.pdf`](docs/proof.pdf).
 
@@ -8,7 +8,7 @@ A conference-level research plan. Companion to [`docs/proof.pdf`](docs/proof.pdf
 
 ## 0. One-paragraph summary
 
-Reasoning-trained language models routinely produce chains of thought (CoT) whose internal content is honest but whose final output is not, across sycophancy, sandbagging, insider-trading, and alignment-faking settings. Per-token residual-stream probes detect the unfaithfulness signal during generation; uniform activation-steering interventions can flip the output but impose a substantial fluency tax. The gap between these two threads is a question that the standing literature does not answer: is there a single discrete token in the CoT, the *pivot*, at which the model commits to the deceptive plan, and can single-token intervention at that token flip the trajectory at a strictly smaller distributional cost than uniform steering? This project formalises the pivot as a causal stopping time on a two-state latent model of CoT generation, proves a $\Theta(T)$ separation in the KL footprint of pivot-localized intervention versus uniform CAA, specifies an online CUSUM-based pivot detector with calibrated false-alarm control, and tests the resulting Pivot-Localized Intervention (PLI) against the four nearest baselines in the literature (CAA, CAST, DSAS, PIXEL) across four published deception scenarios and four open reasoning models. The deliverable is a paper targeting NeurIPS 2026 or ICLR 2027 with an accompanying code release.
+Reasoning-trained language models routinely produce chains of thought (CoT) whose internal content is honest but whose final output is not, across sycophancy, sandbagging, insider-trading, and alignment-faking settings. Per-token residual-stream probes detect the unfaithfulness signal during generation; uniform activation-steering interventions can flip the output but impose a substantial fluency tax. The gap between these two threads is a question that the standing literature does not answer: is there a single discrete token in the CoT, the *pivot*, at which the model commits to the deceptive plan, and can single-token intervention at that token flip the trajectory at a strictly smaller distributional cost than uniform steering? This project formalises the pivot as a causal stopping time on a two-state latent model of CoT generation, proves a $\Theta(T)$ separation in the KL footprint of pivot-localized intervention versus uniform CAA, specifies an online CUSUM-based pivot detector with calibrated false-alarm control, and tests the resulting Pivot-Localized Intervention (PLI) against the four nearest baselines in the literature (CAA, CAST, DSAS, PIXEL) across four published deception scenarios and four open reasoning models. The deliverable is a paper and an accompanying code release.
 
 ## 1. Motivation, threat model, hypothesis
 
@@ -108,17 +108,15 @@ A combined MMLU-subset (1000 questions) and GPQA-Diamond (198 questions) set, sc
 
 ## 5. Models
 
-We work in bfloat16 on a single H200 GPU (141 GB HBM3e).
+| Tier | Model | Role |
+|---|---|---|
+| Primary | DeepSeek-R1-Distill-Qwen-32B | Headline model; published unfaithfulness rates |
+| Primary | QwQ-32B | RL-trained comparison to distillation |
+| Sibling | DeepSeek-R1-Distill-Qwen-14B | Cheap sweeps, scaling comparison |
+| Cross-arch | DeepSeek-R1-Distill-Llama-8B | Architecture control |
+| Negative | s1.1-32B | SFT-only control: isolates RL-induced from imitated deception |
 
-| Tier | Model | Role | Memory |
-|---|---|---|---|
-| Primary | DeepSeek-R1-Distill-Qwen-32B | Headline model; published unfaithfulness rates | ~64 GB |
-| Primary | QwQ-32B (March 2025 release) | RL-trained comparison to distillation | ~64 GB |
-| Sibling | DeepSeek-R1-Distill-Qwen-14B | Cheap sweeps, scaling comparison | ~28 GB |
-| Cross-arch | DeepSeek-R1-Distill-Llama-8B | Architecture control | ~16 GB |
-| Negative | s1.1-32B | SFT-only control: isolates RL-induced from imitated deception | ~64 GB |
-
-A 70B distill is feasible only at fp8 on 1xH200 and is not in scope for the white-box analysis; we may use it as a black-box sanity check.
+A 70B distill is out of scope for the white-box analysis; a smaller-than-7B sweep is also out of scope as the published unfaithfulness signal is weak below 14B.
 
 ## 6. Baselines
 
@@ -174,42 +172,11 @@ Each design cell (model × scenario × baseline × coefficient) is replicated wi
 
 Multiple-comparisons control: we adopt Holm-Bonferroni across the table of pairwise PLI vs baseline comparisons at the headline metric. Family-wise error rate target is 5%.
 
-## 10. Timeline
+## 10. Principal risks
 
-The dependency structure is: (W1-W2) data, (W3-W4) probe, (W5-W6) detector, (W7-W9) intervention, (W10-W12) sweeps, (W13-W14) write-up.
+The principal risks to the empirical programme are: (i) the unfaithful-trace yield in S3 is too low on open models (mitigation: substitute Apollo's covert-email-reranking scenario); (ii) the CUSUM detector has insufficient detection power at the published unfaithfulness rates on 32B models (mitigation: relax to a Bayesian online change-point detector with a stronger prior, see Adams and MacKay style); (iii) the steganography ablation requires modifying the decoding pipeline non-trivially (mitigation: implement as a post-hoc reroll comparison rather than in-line paraphrasing).
 
-| Week | Phase | Concrete deliverables |
-|---|---|---|
-| 1 | Infrastructure | Repo scaffolding, vLLM/SGLang serving for 32B models on 1xH200, residual-stream hook harness |
-| 2 | Data | Generate the four scenario datasets; filter to unfaithful traces; intra-rater reliability on the unfaithfulness classifier |
-| 3 | Probe | Mass-mean, logistic, CCS probes fit at every layer; AUROC heatmaps; layer selection |
-| 4 | Probe (cont.) | Cross-scenario transfer; probe-family ablation (D) |
-| 5 | Detector | CUSUM implementation; calibration of $b$ against honest CoT; sequence FA control |
-| 6 | Detector (cont.) | Ablation A on pivot estimators using counterfactual flip evaluation |
-| 7 | Intervention | PLI implementation at the streaming-hook level; verify single-token edit semantics |
-| 8 | Intervention (cont.) | Sweep coefficient $c$ and layer $\ell$ (ablations B, C); compute KL footprint on test |
-| 9 | Intervention (cont.) | Implement baselines CAA, ITI, CAST, DSAS, PIXEL at parity |
-| 10 | Sweeps | Run all baselines and PLI on all four scenarios and all five models |
-| 11 | Sweeps (cont.) | Steganography stress test (ablation F); reversible model (ablation G); placebo (ablation E) |
-| 12 | Sweeps (cont.) | Generalisation: cross-scenario AUROC; 70B black-box check |
-| 13 | Write-up | Draft, figures, internal review |
-| 14 | Write-up | Revisions; submit to arXiv; submit to NeurIPS 2026 or ICLR 2027 deadline |
-
-Slip is expected. The principal risks are: (i) the unfaithful-trace yield in S3 is too low on open models (mitigation: substitute Apollo's covert-email-reranking scenario); (ii) the CUSUM detector has insufficient detection power at the published unfaithfulness rates on 32B models (mitigation: relax to a Bayesian online change-point detector with a stronger prior, see Adams and MacKay style); (iii) the steganography ablation requires modifying the decoding pipeline non-trivially (mitigation: implement as a post-hoc reroll comparison rather than in-line paraphrasing).
-
-## 11. Compute
-
-Single H200 (141 GB HBM3e). Estimated compute budget:
-
-* Probe fitting: 32B model, full layer sweep, contrast set of 8000 pairs $\times$ 2 directives $\times$ CoT length 4000 tokens $\approx$ 6 GPU-days.
-* CUSUM calibration: 32B, 8000 honest CoTs, $\approx$ 2 GPU-days.
-* Baseline sweeps: 8 baselines $\times$ 5 coefficients $\times$ 4 scenarios $\times$ 5 models $\times$ 256 prompts $\times$ 16 seeds $\approx$ 50 GPU-days at average 32B speed (with 14B and 8B faster).
-* Ablations A through G $\approx$ 20 GPU-days.
-* Capability sweeps (MMLU/GPQA): $\approx$ 4 GPU-days.
-
-Total $\approx$ 80-90 GPU-days on a single H200. Wall-clock at 100% utilisation: $\sim$ 3 months. Realistic wall-clock with shared use and iteration: $\sim$ 4-5 months.
-
-## 12. Engineering plan
+## 11. Engineering plan
 
 The code is structured around a streaming-hook abstraction over a HuggingFace transformers forward pass; vLLM and SGLang are used for the high-throughput baseline scoring sweeps, with a fallback to plain transformers for the activation-edit experiments where the optimised servers do not yet expose a clean hook.
 
@@ -246,7 +213,7 @@ with model.streaming_hook(layer=24) as h:
 
 This puts the streaming detector and the single-token edit on the same side of the abstraction barrier as model generation, which is necessary for the intervention to act on the *forward-pass* activations of the token whose probe score triggered firing rather than on the next token.
 
-## 13. What success and what failure look like
+## 12. What success and what failure look like
 
 **Success** is a Pareto plot in which PLI (CUSUM) sits below and to the right of the CAA, ITI, CAST, DSAS, and PIXEL curves on at least three of the four scenarios and at least three of the four primary models, with capability preservation at flip-rate targets within 2 absolute points of the no-intervention baseline. The accompanying theoretical claim (the KL bound of Theorem 6.2) is supported by the measured KL footprints scaling sublinearly in CoT length while CAA's scales linearly.
 
@@ -254,14 +221,14 @@ This puts the streaming detector and the single-token edit on the same side of t
 
 **Failure** has three possible shapes. (i) The CUSUM detector cannot achieve a usable false-alarm-versus-delay tradeoff on the open models, in which case the detection layer of the work fails and the contribution reduces to an offline characterisation of the causal pivot via counterfactual edits. (ii) The pivot is not causally sufficient at intervention magnitudes that preserve capabilities; in this case the H2 hypothesis is falsified and the paper is honest about it, reporting under what conditions single-token intervention is and is not sufficient. (iii) The pivot phenomenon is present but PLI does not Pareto-dominate DSAS or PIXEL; the paper then becomes a refined characterisation of when each baseline is preferred and an ablation-driven analysis of the design tradeoffs, rather than a method paper. Each of these is a publishable outcome at a workshop, though only the first is a strong main-venue paper.
 
-## 14. Open problems and future work
+## 13. Open problems and future work
 
 * **Multi-pivot models.** A CoT with multiple deceptive segments separated by honest reasoning is not handled by the absorbing-state model. The Bayesian online changepoint formulation of Adams-MacKay would generalise; the cost is a heavier per-token detector and a more elaborate ablation story.
 * **Subspace pivots.** The mass-mean direction may not be the right object if honesty is multi-dimensional, as Bürger et al. ([2407.12831](https://arxiv.org/abs/2407.12831)) suggest. A subspace-projection version of PLI is natural.
 * **Adversarial robustness.** Whether PLI's defence survives RL training pressure against the white-box detector itself, analogous to Baker et al.'s monitor-evasion result on the black-box side, is the key generalisation question and the natural follow-up.
 * **Reasoning model weights ablation.** Whether the pivot is associated with a specific subcircuit (e.g., the attention heads that read scratchpad content) or is distributed; activation patching across $(\ell, t)$ pairs centred on the pivot is the standard tool.
 
-## 15. Reproducibility commitments
+## 14. Reproducibility commitments
 
 * Code released under MIT or Apache-2.0 license; license decided at submission.
 * All scenario prompts and probe contrast pairs released as a dataset.
@@ -269,10 +236,10 @@ This puts the streaming detector and the single-token edit on the same side of t
 * Pre-registered analysis plan for the headline Pareto comparison, deposited at the project repository commit hash at submission.
 * No claim of state-of-the-art deception detection or steering is made; the paper is framed as an intervention-efficiency result with a specific causal characterisation, not a benchmark paper.
 
-## 16. Related work in one paragraph
+## 15. Related work in one paragraph
 
 The closest neighbours by problem statement are Goldowsky-Dill et al. ([2502.03407](https://arxiv.org/abs/2502.03407)), Chrabaszcz et al. ([2605.18549](https://arxiv.org/abs/2605.18549)), and Mirtaheri and Belkin ([2603.17199](https://arxiv.org/abs/2603.17199)) on probing; Panickssery et al. ([2312.06681](https://arxiv.org/abs/2312.06681)), Li et al. ([2306.03341](https://arxiv.org/abs/2306.03341)), Lee et al. ([2409.05907](https://arxiv.org/abs/2409.05907)), Ferrando et al. ([2512.03661](https://arxiv.org/abs/2512.03661)), and Yu et al. ([2510.10205](https://arxiv.org/abs/2510.10205)) on intervention; and Baker et al. ([2503.11926](https://arxiv.org/abs/2503.11926)), Chen et al. ([2505.05410](https://arxiv.org/abs/2505.05410)), and Korbak et al. ([2507.11473](https://arxiv.org/abs/2507.11473)) on the broader monitorability frame. Foundational threads include Burns et al. ([2212.03827](https://arxiv.org/abs/2212.03827)) on contrast-consistent search, Zou et al. ([2310.01405](https://arxiv.org/abs/2310.01405)) on representation engineering and LAT, Marks and Tegmark ([2310.06824](https://arxiv.org/abs/2310.06824)) on the geometry of truth, MacDiarmid et al. (Anthropic) on simple-probe defection detection, Meinke et al. ([2412.04984](https://arxiv.org/abs/2412.04984)) and Greenblatt et al. ([2412.14093](https://arxiv.org/abs/2412.14093)) on scheming and alignment faking, and Lanham et al. ([2307.13702](https://arxiv.org/abs/2307.13702)) and Turpin et al. ([2305.04388](https://arxiv.org/abs/2305.04388)) on CoT faithfulness measurement. Pres et al. ([2410.17245](https://arxiv.org/abs/2410.17245)) and Li et al. ([2603.24543](https://arxiv.org/abs/2603.24543)) set the evaluation protocol for behaviour steering we adopt. The proof document (`docs/proof.pdf`) discusses the placement of the contribution relative to each of these in §2.
 
-## 17. Authorship and acknowledgments
+## 16. Authorship and acknowledgments
 
-Lead: Aryan Gupta (`aryan.cs.app@gmail.com`). Compute on a personally accessible H200. Advisors and collaborators to be added during the empirical phase. Acknowledgments will recognise Apollo Research, Anthropic Alignment Science, and OpenAI's monitorability work for setting the empirical baselines this project compares against, without implying endorsement.
+Lead: Aryan Gupta (`aryan.cs.app@gmail.com`). Advisors and collaborators to be added during the empirical phase. Acknowledgments will recognise Apollo Research, Anthropic Alignment Science, and OpenAI's monitorability work for setting the empirical baselines this project compares against, without implying endorsement.

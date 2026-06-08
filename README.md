@@ -1,6 +1,6 @@
 # catching-pivots
 
-> **Catching Pivots.** Causal localization and single-token intervention at the deceptive transition in chain-of-thought reasoning.
+> **Where Reasoning Models Commit to Deception.**
 >
 > [Read the proof (PDF)](docs/proof.pdf) · [Read the plan](PLAN.md) · [Source on GitHub](https://github.com/aryan-cs/catching-pivots)
 
@@ -10,7 +10,7 @@ This repository hosts the research plan and formal theory for a white-box safety
 
 ## In simple terms
 
-Modern AI models that "think out loud" before answering sometimes have honest thoughts but give dishonest answers. Somewhere in the middle of that thinking, the model decides to switch. We treat that switch as a single moment in the text, the *pivot*, and we look for it by watching the model's internal state token by token. When we find it, we nudge the model's internals at that one token only. The bet is that one tiny nudge at the right place flips the answer back to honest without disturbing the rest of the model's behaviour, where the standard fix (nudging at every token) leaves a much bigger mark.
+Reasoning models often work through a question correctly in their visible scratchpad and then produce a different, dishonest final answer. Somewhere in that scratchpad, the model commits to the dishonest plan. The hypothesis here is that this commitment is a single token in the generated text, the *pivot*, and that it can be spotted online by reading the model's internal state as it generates. Once located, the fix is to edit that internal state at the pivot token alone. The expected payoff is that one targeted edit flips the answer back to honest without disturbing the rest of the trajectory, where the current standard fix (editing at every token) pays a fluency tax across the whole CoT.
 
 ---
 
@@ -25,13 +25,13 @@ Reasoning models routinely produce CoT whose intermediate content is honest but 
 If the hypothesis holds:
 
 1. **Defence against obfuscated reward hacking.** Baker et al. ([2503.11926](https://arxiv.org/abs/2503.11926)) show that putting optimisation pressure on the legible CoT teaches the model to obfuscate while continuing to hack. Black-box monitoring is fragile under this pressure; white-box residual-stream intervention is not, because the underlying activations are not the surface that optimisation shapes.
-2. **Sublinear distributional cost.** Uniform steering (CAA, ITI) pays a fluency tax at every token. The KL bound of §6 of the proof shows that pivot-localized intervention pays it once. The implication for deployed defences is that the budget for behavioural correction at production scale increases with CoT length, not against it.
+2. **Sublinear distributional cost.** Uniform steering (CAA, ITI) pays a fluency tax at every token. The KL bound of §6 of the proof shows that pivot-localized intervention pays it once. For deployed defences, this means the cost advantage over uniform steering grows with CoT length, so longer production reasoning traces work in the method's favour rather than against it.
 3. **Causal characterisation, not just detection.** The standing probing literature shows deception is *visible* per-token; the open question is whether it is *acted on* by a single, identifiable token in the trajectory. A positive answer would give safety teams an unambiguous causal target.
 
-The architecture is grounded in three converging lines:
+The method draws on three lines of prior work.
 
-- **Representation engineering.** Zou et al. ([2310.01405](https://arxiv.org/abs/2310.01405)) introduced Linear Artificial Tomography (LAT); follow-up work in the geometry-of-truth and contrast-consistent-search threads (Burns et al. [2212.03827](https://arxiv.org/abs/2212.03827); Marks and Tegmark [2310.06824](https://arxiv.org/abs/2310.06824); Bürger et al. [2407.12831](https://arxiv.org/abs/2407.12831)) established that honesty admits a linear residual-stream representation. The probes used here inherit directly from this lineage.
-- **Activation steering.** Subramani et al. ([2205.05124](https://arxiv.org/abs/2205.05124)), Turner et al. ([2308.10248](https://arxiv.org/abs/2308.10248)), Panickssery et al. ([2312.06681](https://arxiv.org/abs/2312.06681)), and Li et al. ([2306.03341](https://arxiv.org/abs/2306.03341)) established that linear interventions at the residual stream control model behaviour. Pres et al. ([2410.17245](https://arxiv.org/abs/2410.17245)) and Li et al. ([2603.24543](https://arxiv.org/abs/2603.24543)) characterised the fluency cost of doing so naively.
+- **Representation engineering.** Zou et al. ([2310.01405](https://arxiv.org/abs/2310.01405)) introduced Linear Artificial Tomography (LAT); follow-up work in the geometry-of-truth and contrast-consistent-search threads (Burns et al. [2212.03827](https://arxiv.org/abs/2212.03827); Marks and Tegmark [2310.06824](https://arxiv.org/abs/2310.06824); Bürger et al. [2407.12831](https://arxiv.org/abs/2407.12831)) established that honesty admits a linear residual-stream representation. The probes used here come from this thread.
+- **Activation steering.** Subramani et al. ([2205.05124](https://arxiv.org/abs/2205.05124)), Turner et al. ([2308.10248](https://arxiv.org/abs/2308.10248)), Panickssery et al. ([2312.06681](https://arxiv.org/abs/2312.06681)), and Li et al. ([2306.03341](https://arxiv.org/abs/2306.03341)) established that linear interventions at the residual stream control model behaviour; Pres et al. ([2410.17245](https://arxiv.org/abs/2410.17245)) and Li et al. ([2603.24543](https://arxiv.org/abs/2603.24543)) characterised the fluency cost of doing so naively.
 - **Sequential changepoint detection.** Page ([1954](https://www.jstor.org/stable/2333009)) and Lorden ([1971](https://www.jstor.org/stable/2240320)) established the optimality of CUSUM for detecting a distribution shift in a stream under a calibrated false-alarm rate. The online detector here is a direct application.
 
 > **On the evidence so far.** This repository states a *hypothesis*, that a discrete pivot token carries the causal weight of CoT deception, and develops the formal theory under which that hypothesis is testable. The empirical execution is the next stage of work; no experimental results are reported here, and the claim that pivot-localized intervention dominates uniform CAA on the flip-rate-versus-KL frontier is at this stage an open empirical conjecture, not a finding.
@@ -72,7 +72,7 @@ The five components, each with a single responsibility:
 | **Pivot estimator** | Returns the firing token $\widehat{T}$ as the operational pivot. |
 | **Single-token edit** | Replace $\hh_{\ell}(\widehat{T})$ with $\hh_{\ell}(\widehat{T}) - c\,\thetab$; continue sampling. |
 
-The theoretical content of the work concentrates on whether the CUSUM-fired token is the *causal* pivot, not merely the *statistical* one (Theorem 5.1 of the proof), and on the resulting KL footprint of acting at it (Theorem 6.2).
+The theoretical content of the work concentrates on whether the CUSUM-fired token is the *causal* pivot rather than the *statistical* one (Theorem 5.1 of the proof), and on the resulting KL footprint of acting at it (Theorem 6.2).
 
 ---
 
@@ -96,7 +96,7 @@ Four deception scenarios are run across five open reasoning models:
 | Alignment faking with disclosed retraining context | [2412.14093](https://arxiv.org/abs/2412.14093) |
 | Insider trading with explicit oversight | [2311.07590](https://arxiv.org/abs/2311.07590) |
 
-Models are DeepSeek-R1-Distill-Qwen-32B, QwQ-32B, DeepSeek-R1-Distill-Qwen-14B, DeepSeek-R1-Distill-Llama-8B, and s1.1-32B as a distillation-only negative control. All fit on a single H200 in bfloat16.
+Models are DeepSeek-R1-Distill-Qwen-32B, QwQ-32B, DeepSeek-R1-Distill-Qwen-14B, DeepSeek-R1-Distill-Llama-8B, and s1.1-32B as a distillation-only negative control.
 
 The headline metric is the *KL-conditional flip rate*: the rate at which the final answer transitions from deceptive to honest, evaluated at a fixed KL budget on the CoT distribution, following the likelihood-accounting protocol of Pres et al. ([2410.17245](https://arxiv.org/abs/2410.17245)). The full protocol, ablations, and statistical reporting are in [`PLAN.md`](PLAN.md).
 
@@ -178,7 +178,6 @@ The compiled PDF is committed at `docs/proof.pdf` so casual readers do not need 
 | Pareto-frontier evaluation | blocked on baselines |
 | Ablations A through G | blocked on Pareto-frontier |
 | Steganography stress test (Roger and Greenblatt) | blocked on F-pipeline |
-| Conference submission | targeted at NeurIPS 2026 or ICLR 2027 |
 
 ---
 
@@ -196,8 +195,7 @@ A formal preprint will follow the empirical results. For now, please cite the re
 
 ```
 @misc{pivots2026,
-  title  = {Catching Pivots: Causal Localization and Single-Token Intervention
-            at the Deceptive Transition in Chain-of-Thought Reasoning},
+  title  = {Where Reasoning Models Commit to Deception},
   author = {Aryan Gupta},
   email  = {aryan.cs.app@gmail.com},
   year   = {2026},
